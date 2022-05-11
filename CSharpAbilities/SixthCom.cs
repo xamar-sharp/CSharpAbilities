@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Reflection;
+using Newtonsoft.Json;
 using System.Text.Json;
 using System.Collections;
 namespace CSharpAbilities
@@ -74,7 +75,7 @@ namespace CSharpAbilities
         private readonly IAssemblyFormatter _assemblyFormatter;
         private readonly IDomainFormatter _domainFormatter;
         private readonly System.Runtime.Loader.AssemblyLoadContext _ctx;
-        public ReflectionManager(IPrinter<string> printer, ILocalizer<string> localizer, IAssemblyExplorer assemblyExplorer,IDomainExplorer domainExplorer,IAssemblyFormatter assemblyFormatter,IDomainFormatter domainFormatter)
+        public ReflectionManager(IPrinter<string> printer, ILocalizer<string> localizer, IAssemblyExplorer assemblyExplorer, IDomainExplorer domainExplorer, IAssemblyFormatter assemblyFormatter, IDomainFormatter domainFormatter)
         {
             _ctx = new System.Runtime.Loader.AssemblyLoadContext($"{Guid.NewGuid()}", true);
             _localizer = localizer;
@@ -110,9 +111,10 @@ namespace CSharpAbilities
         }
         public async ValueTask Invoke(Type instanceType, object[] ctorArgs, string methodInfoName, object[] methodArgs)
         {
-            try { 
-            object instance = Activator.CreateInstance(instanceType, ctorArgs);
-            instanceType.GetMethod(methodInfoName)?.Invoke(instance, methodArgs);
+            try
+            {
+                object instance = Activator.CreateInstance(instanceType, ctorArgs);
+                instanceType.GetMethod(methodInfoName)?.Invoke(instance, methodArgs);
             }
             catch
             {
@@ -177,7 +179,7 @@ namespace CSharpAbilities
         private readonly StringBuilder _builder;
         private readonly static object SYNC_ROOT = new object();
         private readonly IAssemblyExplorer _explorer;
-        public AppDomainExplorer(IPrinter<string> printer, ILocalizer<string> localizer,IAssemblyExplorer explorer)
+        public AppDomainExplorer(IPrinter<string> printer, ILocalizer<string> localizer, IAssemblyExplorer explorer)
         {
             _localizer = localizer;
             _printer = printer;
@@ -188,7 +190,7 @@ namespace CSharpAbilities
         {
             try
             {
-                foreach(var asm in domain.GetAssemblies())
+                foreach (var asm in domain.GetAssemblies())
                 {
                     await _explorer.Explore(asm);
                 }
@@ -215,41 +217,29 @@ namespace CSharpAbilities
         {
             try
             {
-                foreach(var type in assembly.DefinedTypes)
+                foreach (var type in assembly.DefinedTypes)
                 {
                     _builder.AppendLine($"{_localizer["TypeFullNameTitle"]}:{type.FullName}");
                     _builder.AppendLine($"{_localizer["TypeNameTitle"]}:{type.Name}");
                     _builder.AppendLine($"{_localizer["TypeAssemblyNameTitle"]}:{type.Assembly.Location}");
-                    foreach(var property in type.GetProperties())
+                    foreach (var property in type.GetProperties())
                     {
                         _builder.AppendLine($"{_localizer["PropertyNameTitle"]}:{property.Name}");
                         _builder.Append($"{_localizer["MethodNameTitle"]}:{property.GetSetMethod().Name}");
-                        foreach (var param in property.GetSetMethod().GetParameters())
-                        {
-                            _builder.Append($" {param.ParameterType} {param.Name} ");
-                        }
+                        AppendParameters(_builder, property.GetSetMethod());
                         _builder.AppendLine();
                         _builder.Append($"{_localizer["MethodNameTitle"]}:{property.GetGetMethod().Name}");
-                        foreach (var param in property.GetGetMethod().GetParameters())
-                        {
-                            _builder.Append($" {param.ParameterType} {param.Name} ");
-                        }
+                        AppendParameters(_builder, property.GetGetMethod());
                         _builder.AppendLine();
                     }
                     foreach (var @event in type.GetEvents())
                     {
                         _builder.AppendLine($"{_localizer["EventNameTitle"]}:{@event.Name}");
                         _builder.Append($"{_localizer["MethodNameTitle"]}:{@event.GetAddMethod().Name}");
-                        foreach (var param in @event.GetAddMethod().GetParameters())
-                        {
-                            _builder.Append($" {param.ParameterType} {param.Name} ");
-                        }
+                        AppendParameters(_builder, @event.GetAddMethod());
                         _builder.AppendLine();
                         _builder.Append($"{_localizer["MethodNameTitle"]}:{@event.GetRemoveMethod().Name}");
-                        foreach (var param in @event.GetRemoveMethod().GetParameters())
-                        {
-                            _builder.Append($" {param.ParameterType} {param.Name} ");
-                        }
+                        AppendParameters(_builder, @event.GetRemoveMethod());
                         _builder.AppendLine();
                     }
                     foreach (var field in type.GetFields())
@@ -259,19 +249,13 @@ namespace CSharpAbilities
                     foreach (var method in type.GetMethods())
                     {
                         _builder.Append($"{_localizer["MethodNameTitle"]}:{method.Name}");
-                        foreach (var param in method.GetParameters())
-                        {
-                            _builder.Append($" {param.ParameterType} {param.Name} ");
-                        }
+                        AppendParameters(_builder, method);
                         _builder.AppendLine();
                     }
                     foreach (var ctor in type.GetConstructors())
                     {
                         _builder.Append($"{_localizer["ConstructorNameTitle"]}:{ctor.Name}");
-                        foreach(var param in ctor.GetParameters())
-                        {
-                            _builder.Append($" {param.ParameterType} {param.Name} ");
-                        }
+                        AppendParameters(_builder, ctor);
                         _builder.AppendLine();
                     }
                 }
@@ -281,6 +265,13 @@ namespace CSharpAbilities
                 await _printer.PrintAsync(_localizer["AssemblyExplorerError"]);
             }
             _builder.Clear();
+        }
+        private void AppendParameters(StringBuilder builder, MethodBase method)
+        {
+            foreach (var param in method.GetParameters())
+            {
+                _builder.Append($" {param.ParameterType} {param.Name} ");
+            }
         }
     }
     public readonly struct AppDomainFormatter : IDomainFormatter
@@ -306,4 +297,97 @@ namespace CSharpAbilities
             _builder.Clear();
         }
     }
+    public interface IJsonHandler
+    {
+        ValueTask SerializeJson(object obj);
+        ValueTask ReadJson(string physicalPath);
+        ValueTask WriteJson(string physicalPath);
+    }
+    public struct JsonHandler : IJsonHandler
+    {
+        private readonly IPrinter<string> _printer;
+        private readonly ILocalizer<string> _localizer;
+        public JsonHandler(IPrinter<string> printer, ILocalizer<string> localizer)
+        {
+            _printer = printer;
+            _localizer = localizer;
+        }
+        public async ValueTask SerializeJson(object obj)
+        {
+            try
+            {
+                await _printer.PrintAsync(JsonConvert.SerializeObject(obj));
+            }
+            catch
+            {
+                await _printer.PrintAsync(_localizer["JsonSerializingError"]);
+            }
+        }
+        public async ValueTask ReadJson(string physicalPath)
+        {
+            try
+            {
+                StringBuilder builder = new(128);
+                using (var stream = File.OpenText(physicalPath))
+                {
+                    using (JsonTextReader reader = new JsonTextReader(stream))
+                    {
+
+                        while (reader.Read())
+                        {
+                            switch (reader.TokenType)
+                            {
+                                case JsonToken.PropertyName:
+                                    builder.AppendLine($"\"{reader.Value}\":");
+                                    break;
+                                case JsonToken.StartArray:
+                                    builder.AppendLine($"[");
+                                    break;
+                                case JsonToken.EndArray:
+                                    builder.AppendLine("]");
+                                    break;
+                                case JsonToken.StartObject:
+                                    builder.AppendLine("{");
+                                    break;
+                                case JsonToken.EndObject:
+                                    builder.AppendLine("}");
+                                    break;
+                                default:
+                                    builder.Append(reader.Value);
+                                    break;
+                            }
+                        }
+                    }
+                }
+                await _printer.PrintAsync(builder.ToString());
+            }
+            catch
+            {
+                await _printer.PrintAsync(_localizer["ReadingJsonError"]);
+            }
+        }
+
+        public async ValueTask WriteJson(string physicalPath)
+        {
+            try
+            {
+                using (TextWriter writer = File.CreateText(physicalPath))
+                {
+                    using (JsonTextWriter jsonWriter = new JsonTextWriter(writer))
+                    {
+                        await jsonWriter.WriteStartObjectAsync();
+                        await jsonWriter.WritePropertyNameAsync("name");
+                        await jsonWriter.WriteValueAsync("Net");
+                        await jsonWriter.WriteCommentAsync("here json...");
+                        await jsonWriter.WriteEndObjectAsync();
+                    }
+                }
+            }
+            catch
+            {
+                await _printer.PrintAsync(_localizer["WritingJsonError"]);
+            }
+        }
+    }
 }
+
