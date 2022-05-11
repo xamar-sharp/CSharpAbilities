@@ -291,7 +291,7 @@ namespace CSharpAbilities
             lock (SYNC_ROOT)
             {
                 _builder.AppendLine($"{_localizer["DomainNameTitle"]}:{domain.FriendlyName}");
-                _builder.AppendLine($"{_localizer["DomainSetupTitle"]}:{JsonSerializer.Serialize(domain.SetupInformation)}");
+                _builder.AppendLine($"{_localizer["DomainSetupTitle"]}:{System.Text.Json.JsonSerializer.Serialize(domain.SetupInformation)}");
             }
             await _printer.PrintAsync(_builder.ToString());
             _builder.Clear();
