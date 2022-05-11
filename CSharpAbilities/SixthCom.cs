@@ -6,6 +6,9 @@ using System.Threading.Tasks;
 using System.Reflection;
 using Newtonsoft.Json;
 using System.Text.Json;
+using System.Data;
+using Dapper;
+using Microsoft.Data.SqlClient;
 using System.Collections;
 namespace CSharpAbilities
 {
@@ -388,6 +391,98 @@ namespace CSharpAbilities
                 await _printer.PrintAsync(_localizer["WritingJsonError"]);
             }
         }
+    }
+    public interface IEntity<T>
+    {
+        public int Id { get; }
+        public T Value { get; }
+    }
+    public interface IRepository<T>
+    {
+        ValueTask<bool> AddEntity(IEntity<T> entity);
+        ValueTask<bool> UpdateEntity(int id, IEntity<T> entity);
+        ValueTask<bool> DeleteEntity(int id);
+        ValueTask<IEnumerable<IEntity<T>>> GetEntities(T value);
+    }
+    public struct DapperRepository:IRepository<string>
+    {
+        private readonly IPrinter<string> _printer;
+        private readonly ILocalizer<string> _localizer;
+        private readonly string _connectionString;
+        public DapperRepository(string connectionString,IPrinter<string> printer, ILocalizer<string> localizer)
+        {
+            _printer = printer;
+            _connectionString = connectionString;
+            _localizer = localizer;
+        }
+        public async ValueTask<bool> AddEntity(IEntity<string> entity)
+        {
+            try
+            {
+                using (IDbConnection connection = new SqlConnection(_connectionString))
+                {
+                    await connection.ExecuteAsync("INSERT INTO Entities VALUES (@Value)", new { entity });
+                }
+                return true;
+            }
+            catch
+            {
+                await _printer.PrintAsync(_localizer["RepositoryAddError"]);
+                return false;
+            }
+        }
+        public async ValueTask<bool> UpdateEntity(int id, IEntity<string> entity)
+        {
+            try
+            {
+                using (IDbConnection connection = new SqlConnection(_connectionString))
+                {
+                    await connection.ExecuteAsync("UPDATE Entities SET Value=@Value WHERE Id=@id", new { id, entity });
+                }
+                return true;
+            }
+            catch
+            {
+                await _printer.PrintAsync(_localizer["RepositoryUpdateError"]);
+                return false;
+            }
+        }
+        public async ValueTask<bool> DeleteEntity(int id)
+        {
+            try
+            {
+                using (IDbConnection connection = new SqlConnection(_connectionString))
+                {
+                    await connection.ExecuteAsync("DELETE FROM Entities WHERE Id=@id", new { id });
+                }
+                return true;
+            }
+            catch
+            {
+                await _printer.PrintAsync(_localizer["RepositoryDeleteError"]);
+                return false;
+            }
+        }
+        public async ValueTask<IEnumerable<IEntity<string>>> GetEntities(string value)
+        {
+            try
+            {
+                using (IDbConnection connection = new SqlConnection(_connectionString))
+                {
+                    return connection.Query<IEntity<string>>("SELECT * FROM Entities WHERE Value=@value", new { value });
+                }
+            }
+            catch
+            {
+                await _printer.PrintAsync(_localizer["RepositoryGetError"]);
+                return null;
+            }
+        }
+    }
+    public struct PeopleEntity : IEntity<string>
+    {
+        public int Id { get; }
+        public string Value { get; set; }
     }
 }
 
