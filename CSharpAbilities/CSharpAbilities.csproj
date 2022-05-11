@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="D:\FivthCom.cs" Link="FivthCom.cs" />
+    <Compile Include="D:\SixthCom.cs" Link="SixthCom.cs" />
+  </ItemGroup>
+
+</Project>
