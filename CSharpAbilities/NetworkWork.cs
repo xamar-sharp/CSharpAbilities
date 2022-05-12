@@ -45,6 +45,7 @@ namespace CSharpAbilities
         bool Bind(IPEndPoint serverPoint);
         bool SendTo(IPEndPoint serverPoint, byte[] data, out byte[] serverData);
         bool ListenFrom(byte[] serverData, out byte[] data);
+        bool JoinGroup(IPAddress groupAddress,byte[] answer, out byte[] data);
     }
     public interface IHttpConnector : IDisposable
     {
@@ -330,15 +331,35 @@ namespace CSharpAbilities
         private readonly IPrinter<string> _printer;
         private readonly ILocalizer<string> _localizer;
         private readonly Socket _socket;
+        private readonly UdpClient _client;
         public UdpConnector(IPrinter<string> printer, ILocalizer<string> localizer)
         {
             _printer = printer;
             _localizer = localizer;
+            _client = new UdpClient() { MulticastLoopback = false };
             _socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
         }
+        public readonly bool JoinGroup(IPAddress address,byte[] answer,out byte[] data)
+        {
+            try
+            {
+                _client.JoinMulticastGroup(address);
+                IPEndPoint point = new IPEndPoint(IPAddress.Any, 0);
+                data = _client.Receive(ref point);
+                _client.Send(answer, answer.Length, point);
+                return true;
+            }
+            catch
+            {
+                data = null;
+                return false;
+            }
+        }
+        
         public readonly void Dispose()
         {
             StopSocket(_socket);
+            _client.Dispose();
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
             GC.WaitForPendingFinalizers();
         }
